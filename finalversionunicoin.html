@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<title>CampusCoin</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<style>
+
+body{
+font-family:'Segoe UI',sans-serif;
+background:#fdeaf2;
+margin:0;
+display:flex;
+justify-content:center;
+}
+
+.app{
+width:360px;
+background:white;
+min-height:100vh;
+border-radius:25px;
+box-shadow:0 10px 30px rgba(0,0,0,0.2);
+padding:20px;
+margin-bottom:70px;
+}
+
+h1{
+color:#ff4da6;
+text-align:center;
+}
+
+.card{
+background:#fff0f6;
+padding:15px;
+border-radius:15px;
+margin-top:15px;
+}
+
+input,select{
+width:100%;
+padding:10px;
+border-radius:10px;
+border:1px solid #ffcce6;
+margin-top:6px;
+}
+
+button{
+width:100%;
+margin-top:10px;
+padding:10px;
+border:none;
+border-radius:12px;
+background:#ff66b3;
+color:white;
+font-weight:bold;
+cursor:pointer;
+}
+
+button:hover{
+background:#ff3385;
+}
+
+.insight{
+background:#ffe6f2;
+padding:8px;
+border-radius:8px;
+margin-top:8px;
+font-size:13px;
+}
+
+.report{
+font-size:13px;
+margin-top:10px;
+}
+
+.streak{
+font-weight:bold;
+color:#ff4da6;
+}
+
+.nav{
+position:fixed;
+bottom:0;
+left:0;
+right:0;
+background:white;
+display:flex;
+justify-content:space-around;
+padding:10px;
+box-shadow:0 -5px 10px rgba(0,0,0,0.1);
+}
+
+.dark{
+background:#1f1f1f;
+color:white;
+}
+
+.dark .card{
+background:#2a2a2a;
+}
+
+.dark input,
+.dark select{
+background:#333;
+color:white;
+border:1px solid #555;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="app">
+
+<h1>🪙 CampusCoin</h1>
+
+<button onclick="toggleDarkMode()">🌙 Toggle Dark Mode</button>
+
+<div class="card">
+
+<input type="number" id="amount" placeholder="Expense ₹">
+
+<select id="category">
+<option>Food</option>
+<option>Travel</option>
+<option>Shopping</option>
+<option>Study</option>
+<option>Other</option>
+</select>
+
+<button onclick="addExpense()">Add Expense</button>
+
+<input type="number" id="saving" placeholder="Savings ₹">
+
+<button onclick="addSaving()">Add Saving</button>
+
+</div>
+
+<div class="card">
+
+<b>Expenses</b>
+<div id="expenseList"></div>
+
+</div>
+
+<div class="card">
+
+<b>Spending Chart</b>
+<canvas id="chart"></canvas>
+
+</div>
+
+<div class="card">
+
+<b>Weekly Spending</b>
+<canvas id="weekChart"></canvas>
+
+</div>
+
+<div class="card">
+
+<b>Monthly Report</b>
+<div id="report" class="report"></div>
+
+<button onclick="exportPDF()">Export Report PDF</button>
+
+</div>
+
+<div class="card">
+
+<b>Smart Insights</b>
+<div id="insight"></div>
+
+</div>
+
+<div class="card">
+
+<b>Saving Streak</b>
+<div id="streak" class="streak"></div>
+
+</div>
+
+</div>
+
+<div class="nav">
+
+<button onclick="scrollToSection('chart')">📊</button>
+<button onclick="scrollToSection('weekChart')">📅</button>
+<button onclick="scrollToSection('report')">📄</button>
+
+</div>
+
+<script>
+
+let expenses = JSON.parse(localStorage.getItem("expenses")) || []
+let savings = JSON.parse(localStorage.getItem("savings")) || 0
+let streak = JSON.parse(localStorage.getItem("streak")) || 0
+
+function addExpense(){
+
+let amount=document.getElementById("amount").value
+let category=document.getElementById("category").value
+
+if(amount==""){
+alert("Enter amount")
+return
+}
+
+expenses.push({
+id:Date.now(),
+amount:Number(amount),
+category:category,
+date:new Date().toISOString()
+})
+
+localStorage.setItem("expenses",JSON.stringify(expenses))
+
+document.getElementById("amount").value=""
+
+render()
+
+}
+
+function addSaving(){
+
+let saving=document.getElementById("saving").value
+
+if(saving==""){
+alert("Enter saving amount")
+return
+}
+
+savings+=Number(saving)
+
+localStorage.setItem("savings",JSON.stringify(savings))
+
+document.getElementById("saving").value=""
+
+render()
+
+}
+
+function deleteExpense(id){
+
+expenses=expenses.filter(e=>e.id!==id)
+
+localStorage.setItem("expenses",JSON.stringify(expenses))
+
+render()
+
+}
+
+function render(){
+
+let totals={}
+let weekly=[0,0,0,0,0,0,0]
+
+let list=document.getElementById("expenseList")
+list.innerHTML=""
+
+expenses.forEach(e=>{
+
+totals[e.category]=(totals[e.category]||0)+e.amount
+
+let day=new Date(e.date).getDay()
+weekly[day]+=e.amount
+
+let item=document.createElement("div")
+
+item.innerHTML=e.category+" ₹"+e.amount+
+" <button onclick='deleteExpense("+e.id+")'>❌</button>"
+
+list.appendChild(item)
+
+})
+
+createChart(totals)
+createWeekChart(weekly)
+createReport(totals)
+createInsights(totals)
+updateStreak()
+
+}
+
+let chart
+
+function createChart(data){
+
+let labels=Object.keys(data)
+let values=Object.values(data)
+
+if(chart) chart.destroy()
+
+chart=new Chart(document.getElementById("chart"),{
+
+type:"doughnut",
+
+data:{
+labels:labels,
+datasets:[{
+data:values,
+backgroundColor:[
+"#ff99cc",
+"#ffcce6",
+"#ff66b3",
+"#ffd6eb",
+"#ffb3d9"
+]
+}]
+},
+
+options:{animation:{animateScale:true}}
+
+})
+
+}
+
+let weekChart
+
+function createWeekChart(data){
+
+if(weekChart) weekChart.destroy()
+
+weekChart=new Chart(document.getElementById("weekChart"),{
+
+type:"bar",
+
+data:{
+labels:["Sun","Mon","Tue","Wed","Thu","Fri","Sat"],
+datasets:[{
+label:"Weekly Spending",
+data:data,
+backgroundColor:"#ff99cc"
+}]
+},
+
+options:{animation:true}
+
+})
+
+}
+
+function createReport(totals){
+
+let total=0
+
+for(let c in totals){
+total+=totals[c]
+}
+
+let savingRate=((savings/(savings+total))*100).toFixed(1)
+
+let text="Total Spent: ₹"+total+"<br>"
+text+="Total Saved: ₹"+savings+"<br>"
+text+="Savings Rate: "+savingRate+"%<br><br>"
+
+for(let c in totals){
+
+let percent=((totals[c]/total)*100).toFixed(1)
+
+text+=c+": ₹"+totals[c]+" ("+percent+"%)<br>"
+
+}
+
+document.getElementById("report").innerHTML=text
+
+}
+
+function createInsights(totals){
+
+let insight=""
+
+if(totals["Food"]>1000){
+
+insight+="<div class='insight'>🍜 Food spending is high this month.</div>"
+
+}
+
+if(totals["Travel"]>totals["Food"]){
+
+insight+="<div class='insight'>🚌 Travel is your biggest expense.</div>"
+
+}
+
+let total=Object.values(totals).reduce((a,b)=>a+b,0)
+
+if(total>3000){
+
+insight+="<div class='insight'>⚠️ You crossed ₹3000 spending.</div>"
+
+}
+
+if(insight==""){
+
+insight="<div class='insight'>✨ Spending looks balanced!</div>"
+
+}
+
+document.getElementById("insight").innerHTML=insight
+
+}
+
+function updateStreak(){
+
+let today=new Date().toDateString()
+
+let todaySpent=expenses.some(e=>new Date(e.date).toDateString()==today)
+
+if(!todaySpent){
+streak++
+}else{
+streak=0
+}
+
+localStorage.setItem("streak",JSON.stringify(streak))
+
+document.getElementById("streak").innerHTML="🔥 "+streak+" day no-spend streak"
+
+}
+
+function exportPDF(){
+
+const { jsPDF } = window.jspdf
+
+let doc=new jsPDF()
+
+let text=document.getElementById("report").innerText
+
+doc.text("CampusCoin Monthly Report",10,10)
+doc.text(text,10,20)
+
+doc.save("campuscoin-report.pdf")
+
+}
+
+function toggleDarkMode(){
+
+document.body.classList.toggle("dark")
+
+}
+
+function scrollToSection(id){
+
+document.getElementById(id).scrollIntoView({
+behavior:"smooth"
+})
+
+}
+
+render()
+
+</script>
+
+</body>
+
+</html>
